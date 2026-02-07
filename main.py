@@ -2,6 +2,7 @@ import pygame
 import time as t
 import numpy as np
 import stable_baselines3
+import random as r
 import gym
 from gym import spaces
 
@@ -12,8 +13,11 @@ class snake(gym.Env):
     isRunning = True
     playSpace = np.zeros((12, 12))
     playerPos = [6, 6]
-    playerLen = 3
-    playerTail = []
+    playerLen = 0
+    playerTail = [[6, 6] for i in range(0, playerLen-1)]
+
+    applePos = [r.randint(0, 11), r.randint(0, 11)]
+
     playerDir = 1
     actions = 3
 
@@ -45,11 +49,29 @@ class snake(gym.Env):
 
     def step(self, action):
         """Evolve environment in response to action and calculate reward"""
-        self.playSpace[self.playerPos[0], self.playerPos[1]] = 0
-        if len(self.playerTail) > 0:
-            self.playerTail.pop(0)
-        if len(self.playerTail) <= self.playerLen:
+        print(f'applePos: {self.applePos}')
+        print(f'playerPos: {self.playerPos}')
+        print(f'snakeLen: {self.playerLen}')
+        print(f'playertail: {self.playerTail}')
+        print(len(self.playerTail))
+        for pos in self.playerTail:
+            if pos == self.playerPos:
+                pygame.quit()
+        self.playSpace[self.applePos[0], self.applePos[1]] = 2
+        if len(self.playerTail) < 0:
+            self.playSpace[self.playerPos[0], self.playerPos[1]] = 0
+        elif len(self.playerTail) < self.playerLen:
             self.playerTail.append([self.playerPos[0], self.playerPos[1]])
+            print('append')
+        elif len(self.playerTail) == self.playerLen:
+            self.playerTail.append([self.playerPos[0], self.playerPos[1]])
+            toBeRemoved = self.playerTail[0].copy()
+            self.playerTail.pop(0)
+            self.playSpace[toBeRemoved[0], toBeRemoved[1]] = 0
+        else:
+            toBeRemoved = self.playerTail[0].copy()
+            self.playerTail.pop(0)
+            self.playSpace[toBeRemoved[0], toBeRemoved[1]] = 0
         if action == 1:
             self.playerDir -= 1
         elif action == 2:
@@ -65,12 +87,21 @@ class snake(gym.Env):
             self.playerPos[1] -= 1
         if self.playerDir == 4:
             self.playerPos[0] += 1
-        try:
+
+        if self.playerPos == self.applePos:
+            print("Father, I have felt the apple perish and rot within my gaping maw. Still, my hunger persists. I desire more.")
+            self.playerLen += 1
+            self.applePos = [r.randint(0, 11), r.randint(0, 11)]
+            while self.applePos in self.playerTail + self.playerPos:
+                self.applePos = [r.randint(0, 11), r.randint(0, 11)]
+
+        if 0 <= self.playerPos[0] <= 11 and 0 <= self.playerPos[1] <= 11:
             self.playSpace[self.playerPos[0], self.playerPos[1]] = 1
             for pos in self.playerTail:
                 pass
-                #self.playSpace[pos[0], pos[1]] = 1
-        except IndexError:
+                self.playSpace[pos[0], pos[1]] = 1
+        else:
+            print('goodbye, cruel world')
             pygame.quit()
         #return  self._get_obs(), reward, done, info
 
@@ -127,12 +158,11 @@ while running:
                 act = 3
         if event.type == pygame.QUIT:
             running = False
-    print(act)
     game.screen.fill("black")
     game.step(act)
     game.render()
     pygame.display.flip()
 
-    t.sleep(0.5)
+    t.sleep(0.3)
 
 pygame.quit()
