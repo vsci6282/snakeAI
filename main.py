@@ -1,3 +1,4 @@
+import matplotlib.pyplot as plt
 import pygame
 import time as t
 import numpy as np
@@ -32,6 +33,16 @@ class snake(gym.Env):
     totalFrame = 0
     attempt = 1
     attemptFrame = 0
+
+    plt.ion()
+    attemptRewards = []
+    smoothedAttemptRewards = []
+    fig, ax = plt.subplots()
+    scatPlot = ax.scatter(range(1, len(attemptRewards) + 1), attemptRewards)
+    regPlot, = ax.plot(range(1, len(smoothedAttemptRewards) + 1), smoothedAttemptRewards, color=(1, 0, 0))
+    rewardThisAttempt = 0
+    smoothing = 50
+
     def __init__(self, isRendering, hasHumanPlayer, tickSpeed, printsBasicDebug, printsAdvancedDebug, debugFreq):
 
         self.playerPos = [6, 6]
@@ -50,11 +61,11 @@ class snake(gym.Env):
 
         self.playerDir = 1
         if isRendering:
-            self.screen = pygame.display.set_mode((600, 600))
+            self.screen = pygame.display.set_mode((400, 400))
             self.squareSize = 20
             self.squareMargin = 2
             self.colorDict = {0: (120, 120, 120), 1: (0, 200, 200), 2: (200, 50, 50)}
-            self.playSpaceLeftTop = (200, 200)
+            self.playSpaceLeftTop = (100, 100)
 
         self.playSpace[self.playerPos[0], self.playerPos[1]] = 1
         self.playSpace[self.applePos[0], self.applePos[1]] = 2
@@ -98,9 +109,11 @@ class snake(gym.Env):
                 reward -= 20
 
         if self.stepsSinceHadFood >= 200:
+            reward -= 20
             done = True
 
         if self.playerLen >= 143:
+            reward += 160
             done = True
 
         self.playSpace[self.applePos[0], self.applePos[1]] = 2
@@ -134,18 +147,18 @@ class snake(gym.Env):
         self.playerPos[0] += self.playerDirDict[self.playerDir][0]
         self.playerPos[1] += self.playerDirDict[self.playerDir][1]
 
-        postDistToFood = np.abs(self.playerPos[0]-self.applePos[0])
+        postDistToFood = self.getDistToFood()
 
         if self.printsAdvancedDebug:
             print(f'applepos after postdistofood calc {self.applePos}')
 
         if preDistToFood >= postDistToFood:
-            reward += 1
+            reward += 10
         else:
-            reward -= 1
+            reward -= 10
 
         if self.playerPos == self.applePos:
-            reward += 50
+            reward += 80
             self.stepsSinceHadFood = 0
             print("Father, I have felt the apple perish and rot within my gaping maw. Still, my hunger persists. I desire more.")
             self.playerLen += 1
@@ -167,6 +180,8 @@ class snake(gym.Env):
             done = True
             reward -= 20
 
+        self.rewardThisAttempt += reward
+
         self.attemptFrame += 1
         self.totalFrame += 1
         self.debugFrame -= 1
@@ -175,6 +190,8 @@ class snake(gym.Env):
             self.debugFrame = self.debugFreq
         if self.printsBasicDebug:
             print(f'total frames: {self.totalFrame}, frames since last attempt: {self.attemptFrame}, attempt # {self.attempt}, frames until next debug: {self.debugFrame}')
+        if self.printsAdvancedDebug:
+            print('')
         if self.isRendering:
             t.sleep(1/self.tickSpeed)
             self.render()
@@ -185,9 +202,15 @@ class snake(gym.Env):
         return  self._get_obs(), reward, done, False, {}
 
     def reset(self, seed=None, options=None):
+        try:
+            pass
+            #results_plotter.plot_results(["log"], 1e7, results_plotter.X_TIMESTEPS, '')
+        except IndexError:
+            pass
         self.playerPos = [6, 6]
         self.playerLen = 0
         self.playerTail = [[6, 6] for i in range(0, self.playerLen - 1)]
+        self.stepsSinceHadFood = 0
 
         self.applePos = [r.randint(0, 11), r.randint(0, 11)]
         while self.applePos in self.playerTail + self.playerPos:
@@ -197,6 +220,9 @@ class snake(gym.Env):
         self.playSpace = np.zeros((12, 12))
         self.playSpace[self.playerPos[0], self.playerPos[1]] = 1
         self.playSpace[self.applePos[0], self.applePos[1]] = 2
+
+        self.updatePlt(self.rewardThisAttempt)
+        self.rewardThisAttempt = 0
         return self._get_obs(), {}
 
     def render(self):
@@ -213,6 +239,28 @@ class snake(gym.Env):
 
     def getDistToFood(self):
         return np.abs(self.playerPos[0]-self.applePos[0]) + np.abs(self.playerPos[1]-self.applePos[1])
+
+    def updatePlt(self, newItem):
+        smoothInds = [i for i in range(-self.smoothing, self.smoothing + 1)]
+        avg = 0
+        for ind in range(0, len(self.attemptRewards)):
+            numsToBeAvgd = []
+            for sInd in smoothInds:
+                if ((ind + sInd) >= 0) and ((sInd + ind) <= (len(self.attemptRewards) - 1)):
+                    numsToBeAvgd.append(self.attemptRewards[sInd + ind])
+            if len(numsToBeAvgd) == 0:
+                numsToBeAvgd = [self.attemptRewards[ind]]
+            avg = sum(numsToBeAvgd) / len(numsToBeAvgd)
+            self.smoothedAttemptRewards.append(avg)
+        self.regPlot.set_data(range(1, len(self.smoothedAttemptRewards) + 1), self.smoothedAttemptRewards)
+        self.scatPlot.set_offsets(np.c_[np.array(range(1, len(self.attemptRewards) + 1)), np.array(self.attemptRewards)])
+        self.ax.update_datalim(self.scatPlot.get_datalim(self.ax.transData))
+        self.ax.autoscale_view()
+        self.fig.canvas.draw()
+        self.fig.canvas.flush_events()
+        plt.pause(0.01)
+        self.attemptRewards.append(int(newItem))
+        self.smoothedAttemptRewards = []
 
 
 running = False
@@ -239,6 +287,7 @@ while running and game.hasHumanPlayer:
 
     t.sleep(0.3)
 
+
 print('starting up')
 from stable_baselines3.common.env_checker import check_env
 from stable_baselines3.common.env_util import make_vec_env
@@ -251,7 +300,7 @@ import os
 log_dir = "log"
 os.makedirs(log_dir, exist_ok=True)
 
-env = snake(True, False, 4, True, False, 10)
+env = snake(True, False, 4, True, False, 1)
 
 env = Monitor(env, log_dir)
 
@@ -260,7 +309,7 @@ eval_callback = EvalCallback(env, best_model_save_path='./log/',
                              deterministic=False, render=False)
 
 #Train the agent
-max_total_step_num = 1e6
+max_total_step_num = 1e7
 
 
 def learning_rate_schedule(progress_remaining):
@@ -268,7 +317,7 @@ def learning_rate_schedule(progress_remaining):
     #Can do more complicated ones like below
     #stepnum = max_total_step_num*(1-progress_remaining)
     #return 0.003 * np.piecewise(stepnum, [stepnum>=0, stepnum>4e4, stepnum>2e5, stepnum>3e5], [1.0,0.5,0.25,0.125 ])
-    return start_rate * progress_remaining #linearly decreasing
+    return start_rate * progress_remaining + 0.0001 #linearly decreasing
 
 PPO_model_args = {
     "learning_rate": learning_rate_schedule, #decreasing learning rate #0.0003 #can be set to constant
@@ -287,8 +336,10 @@ model.learn(max_total_step_num,callback=eval_callback)
 dt = t.time()-starttime
 print("Calculation took %g hr %g min %g s"%(dt//3600, (dt//60)%60, dt%60) )
 
+
 results_plotter.plot_results(["log"], 1e7, results_plotter.X_TIMESTEPS,'')
 
+'''
 #check_env(env, warn=True) #If the environment doesn't follow the interface, an error will be thrown
 #print('env checked')
 
@@ -297,7 +348,6 @@ observation, info = env.reset() # Reset environment to start a new episode
 print('env reseted')
 print(f"Starting observation: {observation}")
 
-'''
 episode_over = True
 total_reward = 0
 
