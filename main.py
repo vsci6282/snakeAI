@@ -21,6 +21,7 @@ class snake(gym.Env):
     actions = 2
 
     stepsSinceHadFood = 0
+    maxStepsSinceHadFood = 90
 
     agLeft = 1
     agForward = 2
@@ -35,13 +36,13 @@ class snake(gym.Env):
     attemptFrame = 0
 
     plt.ion()
-    attemptRewards = []
-    smoothedAttemptRewards = []
+    attemptRewards = np.array([])
+    smoothedAttemptRewards = np.array([])
     fig, ax = plt.subplots()
-    scatPlot = ax.scatter(range(1, len(attemptRewards) + 1), attemptRewards)
+    scatPlot = ax.scatter(range(1, len(attemptRewards) + 1), attemptRewards, s = 2)
     regPlot, = ax.plot(range(1, len(smoothedAttemptRewards) + 1), smoothedAttemptRewards, color=(1, 0, 0))
     rewardThisAttempt = 0
-    smoothing = 50
+    smoothing = 200
 
     def __init__(self, isRendering, hasHumanPlayer, tickSpeed, printsBasicDebug, printsAdvancedDebug, debugFreq):
 
@@ -108,8 +109,7 @@ class snake(gym.Env):
                 done = True
                 reward -= 20
 
-        if self.stepsSinceHadFood >= 200:
-            reward -= 20
+        if self.stepsSinceHadFood >= self.maxStepsSinceHadFood:
             done = True
 
         if self.playerLen >= 143:
@@ -152,13 +152,13 @@ class snake(gym.Env):
         if self.printsAdvancedDebug:
             print(f'applepos after postdistofood calc {self.applePos}')
 
-        if preDistToFood >= postDistToFood:
-            reward += 10
+        if preDistToFood > postDistToFood:
+            reward += 1
         else:
-            reward -= 10
+            reward -= 1.1
 
         if self.playerPos == self.applePos:
-            reward += 80
+            reward += 160
             self.stepsSinceHadFood = 0
             print("Father, I have felt the apple perish and rot within my gaping maw. Still, my hunger persists. I desire more.")
             self.playerLen += 1
@@ -174,9 +174,6 @@ class snake(gym.Env):
                 self.playSpace[pos[0], pos[1]] = 1
         else:
             print('goodbye, cruel world')
-            if self.printsBasicDebug:
-                self.attempt += 1
-                self.attemptFrame = 0
             done = True
             reward -= 20
 
@@ -211,7 +208,9 @@ class snake(gym.Env):
         self.playerLen = 0
         self.playerTail = [[6, 6] for i in range(0, self.playerLen - 1)]
         self.stepsSinceHadFood = 0
-
+        if self.printsBasicDebug:
+            self.attempt += 1
+            self.attemptFrame = 0
         self.applePos = [r.randint(0, 11), r.randint(0, 11)]
         while self.applePos in self.playerTail + self.playerPos:
             self.applePos = [r.randint(0, 11), r.randint(0, 11)]
@@ -241,25 +240,25 @@ class snake(gym.Env):
         return np.abs(self.playerPos[0]-self.applePos[0]) + np.abs(self.playerPos[1]-self.applePos[1])
 
     def updatePlt(self, newItem):
+        self.attemptRewards = np.append(self.attemptRewards, int(newItem))
         smoothInds = [i for i in range(-self.smoothing, self.smoothing + 1)]
         avg = 0
         for ind in range(0, len(self.attemptRewards)):
-            numsToBeAvgd = []
+            numsToBeAvgd = np.array([])
             for sInd in smoothInds:
                 if ((ind + sInd) >= 0) and ((sInd + ind) <= (len(self.attemptRewards) - 1)):
-                    numsToBeAvgd.append(self.attemptRewards[sInd + ind])
+                    numsToBeAvgd = np.append(numsToBeAvgd, self.attemptRewards[sInd + ind])
             if len(numsToBeAvgd) == 0:
-                numsToBeAvgd = [self.attemptRewards[ind]]
-            avg = sum(numsToBeAvgd) / len(numsToBeAvgd)
-            self.smoothedAttemptRewards.append(avg)
+                numsToBeAvgd = np.array([self.attemptRewards[ind]])
+            avg = np.sum(numsToBeAvgd) / len(numsToBeAvgd)
+            self.smoothedAttemptRewards = np.append(self.smoothedAttemptRewards, avg)
         self.regPlot.set_data(range(1, len(self.smoothedAttemptRewards) + 1), self.smoothedAttemptRewards)
         self.scatPlot.set_offsets(np.c_[np.array(range(1, len(self.attemptRewards) + 1)), np.array(self.attemptRewards)])
         self.ax.update_datalim(self.scatPlot.get_datalim(self.ax.transData))
         self.ax.autoscale_view()
         self.fig.canvas.draw()
         self.fig.canvas.flush_events()
-        plt.pause(0.01)
-        self.attemptRewards.append(int(newItem))
+        plt.pause(0.001)
         self.smoothedAttemptRewards = []
 
 
@@ -300,7 +299,7 @@ import os
 log_dir = "log"
 os.makedirs(log_dir, exist_ok=True)
 
-env = snake(True, False, 4, True, False, 1)
+env = snake(True, False, 1000, True, False, 1000000)
 
 env = Monitor(env, log_dir)
 
@@ -313,15 +312,15 @@ max_total_step_num = 1e7
 
 
 def learning_rate_schedule(progress_remaining):
-    start_rate = 0.0001 #0.0003
+    start_rate = 0.0004 #0.0003
     #Can do more complicated ones like below
     #stepnum = max_total_step_num*(1-progress_remaining)
     #return 0.003 * np.piecewise(stepnum, [stepnum>=0, stepnum>4e4, stepnum>2e5, stepnum>3e5], [1.0,0.5,0.25,0.125 ])
-    return start_rate * progress_remaining + 0.0001 #linearly decreasing
+    return start_rate * progress_remaining #linearly decreasing
 
 PPO_model_args = {
     "learning_rate": learning_rate_schedule, #decreasing learning rate #0.0003 #can be set to constant
-    "gamma": 0.99, #0.99, discount factor for futurer rewards, between 0 (only immediate reward matters) and 1 (future reward equivalent to immediate),
+    "gamma": 1, #0.99, discount factor for futurer rewards, between 0 (only immediate reward matters) and 1 (future reward equivalent to immediate),
     "verbose": 0, #change to 1 to get more info on training steps
     #"seed": 137, #fixing the random seed
     "ent_coef": 0.0, #0, entropy coefficient, to encourage exploration
