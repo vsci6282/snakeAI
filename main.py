@@ -21,7 +21,9 @@ class snake(gym.Env):
     actions = 2
 
     stepsSinceHadFood = 0
-    maxStepsSinceHadFood = 80
+    maxStepsSinceHadFood = 90
+    dangerStepMargin = 10
+    dangerStepMarginReward = -.3
 
     agLeft = 1
     agForward = 2
@@ -42,9 +44,15 @@ class snake(gym.Env):
     scatPlot = ax.scatter(range(1, len(attemptRewards) + 1), attemptRewards, s = 2)
     regPlot, = ax.plot(range(1, len(smoothedAttemptRewards) + 1), smoothedAttemptRewards, color=(1, 0, 0))
     rewardThisAttempt = 0
-    smoothing = 100
+    smoothing = 200
 
-    sizeReward = -0.6
+    sizeReward = -0.2
+
+    startTime = t.time()
+    thisFrameTime = 0
+    maxFrameTimeListLen = 1500
+    frameTimeList = []
+    avgFrameTime = 0
 
     def __init__(self, isRendering, hasHumanPlayer, tickSpeed, printsBasicDebug, printsAdvancedDebug, debugFreq):
 
@@ -93,7 +101,15 @@ class snake(gym.Env):
                 "grid": self.playSpace.astype(np.uint8)}
 
     def step(self, action):
-        """Evolve environment in response to action and calculate reward"""
+        self.thisFrameTime = t.time() - self.startTime
+        self.startTime = t.time()
+        self.framesLeft = self.debugFrame
+        self.frameTimeList.append(self.thisFrameTime)
+        if len(self.frameTimeList) >= self.maxFrameTimeListLen:
+            self.frameTimeList.pop(0)
+        self.avgFrameTime = sum(self.frameTimeList) / len(self.frameTimeList)
+        self.estTimeLeft = self.avgFrameTime*self.debugFrame
+
         if self.printsAdvancedDebug:
             print(f'applePos: {self.applePos}')
             print(f'playerPos: {self.playerPos}')
@@ -113,6 +129,8 @@ class snake(gym.Env):
 
         if self.stepsSinceHadFood >= self.maxStepsSinceHadFood:
             done = True
+        elif self.stepsSinceHadFood >= (self.maxStepsSinceHadFood - self.dangerStepMargin):
+            reward += self.dangerStepMarginReward
 
         if self.playerLen >= 143:
             reward += 160
@@ -191,7 +209,7 @@ class snake(gym.Env):
             pdb.set_trace()
             self.debugFrame = self.debugFreq
         if self.printsBasicDebug:
-            print(f'total frames: {self.totalFrame}, frames since last attempt: {self.attemptFrame}, attempt # {self.attempt}, frames until next debug: {self.debugFrame}')
+            print(f'total frames: {self.totalFrame}, frames since last attempt: {self.attemptFrame}, attempt # {self.attempt}, frames until next debug: {self.debugFrame}, avg frame time: {self.avgFrameTime}, est time left: {(self.estTimeLeft)//3600}h {((self.estTimeLeft)//60)%60}m {np.floor(self.estTimeLeft%60)}s')
         if self.printsAdvancedDebug:
             print('')
         if self.isRendering:
@@ -317,7 +335,7 @@ max_total_step_num = 1e7
 
 
 def learning_rate_schedule(progress_remaining):
-    start_rate = 0.0003 #0.0003
+    start_rate = 0.0002 #0.0003
     #Can do more complicated ones like below
     #stepnum = max_total_step_num*(1-progress_remaining)
     #return 0.003 * np.piecewise(stepnum, [stepnum>=0, stepnum>4e4, stepnum>2e5, stepnum>3e5], [1.0,0.5,0.25,0.125 ])
